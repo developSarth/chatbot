@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NS4L Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Background page content -->
+  <div class="page-bg">
+    <nav class="navbar">
+      <div class="nav-brand">NS4L</div>
+      <div class="nav-links">
+        <a href="#">Products</a>
+        <a href="#">Support</a>
+        <a href="#">Contact</a>
+      </div>
+    </nav>
+    <div class="hero">
+      <h1>Welcome to NS4L</h1>
+      <p>Need help? Click the chat icon in the bottom-right corner.</p>
+    </div>
+  </div>
+
+  <!-- Chat Launcher -->
+  <button class="chat-launcher" id="chat-launcher" aria-label="Open chat">
+    <svg id="icon-chat" width="26" height="26" viewBox="0 0 28 32" fill="white">
+      <path d="M28 16c0 8.837-6.268 16-14 16-2.49 0-4.84-.645-6.876-1.778L0 32l2.462-6.6C.894 22.906 0 19.558 0 16 0 7.163 6.268 0 14 0s14 7.163 14 16z"/>
+    </svg>
+    <svg id="icon-close" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+      <path d="M18 6L6 18M6 6l12 12"/>
+    </svg>
+  </button>
+
+  <!-- Chat Widget -->
+  <div class="chat-widget" id="chat-widget">
+    <!-- Header -->
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <div class="avatar">🤖</div>
+        <div>
+          <div class="chat-title">NS4L Assistant</div>
+          <div class="chat-status">Online</div>
+        </div>
+      </div>
+      <button class="chat-close" id="chat-close">✕</button>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-body" id="chat-body">
+      <div class="msg bot">
+        <div class="msg-bubble">Hi! 👋 How can I help you today?</div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-footer">
+      <div class="image-preview hidden" id="image-preview">
+        <img id="preview-img" src="" alt="Preview">
+        <button class="preview-remove" id="preview-remove">✕</button>
+      </div>
+      <div class="input-row">
+        <label class="attach-btn" for="file-input" title="Attach image">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49"/></svg>
+        </label>
+        <input type="file" id="file-input" accept="image/*" hidden>
+        <textarea id="chat-input" placeholder="Type a message..." rows="1"></textarea>
+        <button class="send-btn" id="send-btn" title="Send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
