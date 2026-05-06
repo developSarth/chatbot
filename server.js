@@ -7,7 +7,8 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const FRONTEND_URL = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
+// Automatically use Render's provided URL if deployed there, otherwise use FRONTEND_URL, otherwise fallback to localhost
+const FRONTEND_URL = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
 // n8n webhook URL — set N8N_WEBHOOK_URL env var in Render dashboard
 const N8N_WEBHOOK_URL = 'https://ravibhai.app.n8n.cloud/webhook/chatbot';
