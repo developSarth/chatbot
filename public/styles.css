@@ -477,3 +477,8 @@ img { max-width: 100%; display: block; }
 @media (max-width: 480px) {
   .chat-widget { width: calc(100vw - 16px); right: 8px; bottom: 80px; max-height: 70vh; }
 }
+
+/* Quick Replies */
+.quick-replies { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.quick-reply-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: #c8e600; padding: 10px 14px; border-radius: 8px; font-size: 13px; text-align: left; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+.quick-reply-btn:hover { background: rgba(255,255,255,0.15); border-color: #c8e600; color: #fff; transform: translateX(2px); }

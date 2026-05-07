@@ -9,9 +9,6 @@
   const input = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send-btn');
   const fileInput = document.getElementById('chat-file-input');
-  const previewWrap = document.getElementById('chat-image-preview');
-  const previewImg = document.getElementById('preview-img');
-  const previewRemove = document.getElementById('preview-remove');
 
   let isOpen = false;
   let pendingFile = null;
@@ -60,9 +57,36 @@
         });
         lastPoll = Math.max(...data.messages.map(m => m.timestamp));
         scrollToBottom();
+      } else {
+        injectInitialGreeting();
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e); 
+      injectInitialGreeting();
+    }
   }
+
+  function injectInitialGreeting() {
+    if (body.querySelector('.msg-admin')) return; // already has messages
+    
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-admin';
+    wrap.innerHTML = `
+      Hi there! 👋 I'm Ace, your sneaker assistant. How can I help you today?
+      <div class="quick-replies">
+        <button class="quick-reply-btn" onclick="window.sendQuickReply('Track My Order')">Track My Order</button>
+        <button class="quick-reply-btn" onclick="window.sendQuickReply('Best Affordable Sneakers of Top Brands')">Best Affordable Sneakers of Top Brands</button>
+        <button class="quick-reply-btn" onclick="window.sendQuickReply('My Shoe\\'s soles are worn within 2 weeks')">My Shoe's soles are worn within 2 weeks</button>
+      </div>
+    `;
+    body.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  window.sendQuickReply = function(text) {
+    input.value = text;
+    sendMessage();
+  };
 
   // Polling for bot replies
   function startPolling() {
@@ -128,16 +152,15 @@
 
   // Show typing
   function showTyping() {
+    removeTyping(); // ensure only one
     const wrap = document.createElement('div');
     wrap.className = 'msg-admin typing-msg';
-    wrap.id = 'typing';
     wrap.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
     body.appendChild(wrap);
     scrollToBottom();
   }
   function removeTyping() {
-    const t = document.getElementById('typing');
-    if (t) t.remove();
+    document.querySelectorAll('.typing-msg').forEach(el => el.remove());
   }
 
   // ===== Send Message =====
@@ -160,11 +183,13 @@
       } catch (e) {
         console.error('Upload failed:', e);
       }
-      clearPreview();
+      pendingFile = null;
     }
 
     // Show user message instantly
-    addBubble(text, 'user', attachments, true);
+    if (text || attachments.length > 0) {
+        addBubble(text, 'user', attachments, true);
+    }
     
     // reset input
     input.value = '';
@@ -221,25 +246,13 @@
       alert('Only images are supported');
       return;
     }
+    
+    // Auto-send immediately
     pendingFile = file;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      previewImg.src = ev.target.result;
-      previewWrap.classList.remove('hidden');
-      updateSendBtn();
-    };
-    reader.readAsDataURL(file);
+    sendMessage();
+    
     fileInput.value = '';
   });
-
-  previewRemove.addEventListener('click', clearPreview);
-
-  function clearPreview() {
-    pendingFile = null;
-    previewImg.src = '';
-    previewWrap.classList.add('hidden');
-    updateSendBtn();
-  }
 
   // ===== Carousel =====
   const carouselImages = document.querySelector('.carousel-images');
