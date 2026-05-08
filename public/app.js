@@ -12,8 +12,9 @@
 
   let isOpen = false;
   let pendingFile = null;
-  let lastPoll = 0; // poll from start first time
+  let lastPoll = 0;
   let pollInterval = null;
+  let sessionStartTime = 0; // Track when this chat session started
 
   // ===== Toggle Chat =====
   function toggleChat() {
@@ -22,9 +23,9 @@
     iconOpen.classList.toggle('hidden', isOpen);
     iconClose.classList.toggle('hidden', !isOpen);
     if (isOpen) {
+      // Fresh session every time the widget opens
+      startFreshSession();
       input.focus();
-      // Fetch all messages initially if needed, or start polling
-      loadMessages();
       startPolling();
     } else {
       stopPolling();
@@ -35,60 +36,87 @@
   closeBtn.addEventListener('click', toggleChat);
   backBtn.addEventListener('click', toggleChat);
 
-  // Load existing messages when opened
-  async function loadMessages() {
-    try {
-      const res = await fetch('/api/messages/poll?since=0');
-      const data = await res.json();
-      if (data.success && data.messages.length > 0) {
-        body.innerHTML = ''; // clear
-        let lastDateStr = '';
-        data.messages.forEach(msg => {
-            const d = new Date(msg.timestamp);
-            const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (dateStr !== lastDateStr) {
-                lastDateStr = dateStr;
-                const dateEl = document.createElement('div');
-                dateEl.className = 'msg-date';
-                dateEl.textContent = dateStr;
-                body.appendChild(dateEl);
-            }
-            addBubble(msg.text, msg.role, msg.attachments, false);
-        });
-        lastPoll = Math.max(...data.messages.map(m => m.timestamp));
-        scrollToBottom();
-      } else {
-        injectInitialGreeting();
-      }
-    } catch (e) { 
-      console.error(e); 
-      injectInitialGreeting();
-    }
+  // ===== Fresh Session — clear chat on every open =====
+  function startFreshSession() {
+    // Clear the message area
+    body.innerHTML = '';
+    // Set session start to now — only poll messages from this point forward
+    sessionStartTime = Date.now();
+    lastPoll = sessionStartTime;
+    // Show fresh greeting with quick replies
+    injectInitialGreeting();
   }
 
   function injectInitialGreeting() {
-    if (body.querySelector('.msg-admin')) return; // already has messages
-    
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-admin';
-    wrap.innerHTML = `
-      Hi there! 👋 I'm Ace, your sneaker assistant. How can I help you today?
-      <div class="quick-replies">
-        <button class="quick-reply-btn" onclick="window.sendQuickReply('Track My Order')">Track My Order</button>
-        <button class="quick-reply-btn" onclick="window.sendQuickReply('Best Affordable Sneakers of Top Brands')">Best Affordable Sneakers of Top Brands</button>
-        <button class="quick-reply-btn" onclick="window.sendQuickReply('My Shoe\\'s soles are worn within 2 weeks')">My Shoe's soles are worn within 2 weeks</button>
-      </div>
-    `;
-    body.appendChild(wrap);
+    if (body.querySelector('.msg-admin')) return;
+
+    // Greeting bubble with slide-in animation
+    const greeting = createBotBubble(
+      "Hi there! 👋 I'm <strong>Ace</strong>, your sneaker assistant. How can I help you today?"
+    );
+    greeting.classList.add('msg-animate-in');
+    body.appendChild(greeting);
+
+    // Quick Replies — after a short delay for natural feel
+    setTimeout(() => {
+      const qr = document.createElement('div');
+      qr.className = 'quick-replies-container msg-animate-in';
+      qr.innerHTML = `
+        <div class="quick-replies-grid">
+          <button class="quick-reply-chip" data-query="Track My Order">
+            <span class="qr-icon">📦</span>
+            <span>Track My Order</span>
+          </button>
+          <button class="quick-reply-chip" data-query="Best Nike shoes">
+            <span class="qr-icon">👟</span>
+            <span>Best Nike Shoes</span>
+          </button>
+          <button class="quick-reply-chip" data-query="Suggest running shoes under 5000">
+            <span class="qr-icon">🏃</span>
+            <span>Running Shoes Under ₹5K</span>
+          </button>
+          <button class="quick-reply-chip" data-query="Best Adidas shoes">
+            <span class="qr-icon">⭐</span>
+            <span>Best Adidas Shoes</span>
+          </button>
+          <button class="quick-reply-chip" data-query="Best Skechers shoes">
+            <span class="qr-icon">🔥</span>
+            <span>Best Skechers Shoes</span>
+          </button>
+          <button class="quick-reply-chip" data-query="My shoe sole is damaged, I need a replacement">
+            <span class="qr-icon">🛠️</span>
+            <span>Report Damaged Shoe</span>
+          </button>
+        </div>
+      `;
+      body.appendChild(qr);
+      scrollToBottom();
+
+      // Attach click handlers
+      qr.querySelectorAll('.quick-reply-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const query = btn.getAttribute('data-query');
+          // Remove quick replies after selection
+          qr.classList.add('qr-fade-out');
+          setTimeout(() => qr.remove(), 300);
+          input.value = query;
+          sendMessage();
+        });
+      });
+    }, 400);
+
     scrollToBottom();
   }
 
-  window.sendQuickReply = function(text) {
-    input.value = text;
-    sendMessage();
-  };
+  // ===== Create styled bot bubble =====
+  function createBotBubble(html) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-admin';
+    wrap.innerHTML = html;
+    return wrap;
+  }
 
-  // Polling for bot replies
+  // ===== Polling for bot replies =====
   function startPolling() {
     stopPolling();
     pollInterval = setInterval(async () => {
@@ -97,7 +125,8 @@
         const data = await res.json();
         if (data.messages && data.messages.length) {
           data.messages.forEach(m => {
-            if (m.role === 'bot') {
+            // Only show messages from AFTER this session started
+            if (m.timestamp >= sessionStartTime && m.role === 'bot') {
               removeTyping();
               addBubble(m.text, 'bot', m.attachments, true);
             }
@@ -114,9 +143,8 @@
   // ===== Render Messages =====
   function addBubble(text, role, attachments, doScroll = true) {
     const wrap = document.createElement('div');
-    // Map role 'user' to msg-user, 'bot' to msg-admin
-    wrap.className = role === 'bot' ? 'msg-admin' : 'msg-user';
-    
+    wrap.className = role === 'bot' ? 'msg-admin msg-animate-in' : 'msg-user msg-animate-in';
+
     // Parse line breaks
     wrap.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
 
@@ -147,14 +175,16 @@
   }
 
   function scrollToBottom() {
-    body.scrollTop = body.scrollHeight;
+    requestAnimationFrame(() => {
+      body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+    });
   }
 
-  // Show typing
+  // Show typing indicator
   function showTyping() {
-    removeTyping(); // ensure only one
+    removeTyping();
     const wrap = document.createElement('div');
-    wrap.className = 'msg-admin typing-msg';
+    wrap.className = 'msg-admin typing-msg msg-animate-in';
     wrap.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
     body.appendChild(wrap);
     scrollToBottom();
@@ -188,15 +218,15 @@
 
     // Show user message instantly
     if (text || attachments.length > 0) {
-        addBubble(text, 'user', attachments, true);
+      addBubble(text, 'user', attachments, true);
     }
-    
-    // reset input
+
+    // Reset input
     input.value = '';
     updateSendBtn();
     input.style.height = 'auto';
 
-    // update lastPoll before we hit send so we don't fetch our own message back if we polled it
+    // Update lastPoll before send so we don't fetch our own message back
     lastPoll = Date.now();
 
     showTyping();
@@ -217,6 +247,12 @@
       removeTyping();
     }
   }
+
+  // Quick reply handler (for legacy inline onclick if any)
+  window.sendQuickReply = function(text) {
+    input.value = text;
+    sendMessage();
+  };
 
   sendBtn.addEventListener('click', sendMessage);
   input.addEventListener('keydown', (e) => {
@@ -246,11 +282,11 @@
       alert('Only images are supported');
       return;
     }
-    
+
     // Auto-send immediately
     pendingFile = file;
     sendMessage();
-    
+
     fileInput.value = '';
   });
 
