@@ -140,13 +140,41 @@
     if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   }
 
+  // ===== Local Product Image Pool =====
+  const SHOE_IMAGES = [
+    'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80', // Red Nike
+    'https://images.unsplash.com/photo-1551107696-a4b0c5a0d9a2?w=400&q=80', // Nike Air
+    'https://images.unsplash.com/photo-1600185365483-26d7a4cc7519?w=400&q=80', // Orange Nike
+    'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400&q=80', // Air Jordan
+    'https://images.unsplash.com/photo-1584735175315-9d5df23860e6?w=400&q=80'  // White sneaker
+  ];
+  let shoeImgIndex = 0;
+  function getNextShoeImage() {
+    const img = SHOE_IMAGES[shoeImgIndex % SHOE_IMAGES.length];
+    shoeImgIndex++;
+    return img;
+  }
+
   // ===== Render Messages =====
   function addBubble(text, role, attachments, doScroll = true) {
     const wrap = document.createElement('div');
     wrap.className = role === 'bot' ? 'msg-admin msg-animate-in' : 'msg-user msg-animate-in';
 
-    // Parse line breaks
-    wrap.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
+    if (text && role === 'bot') {
+      const productUrls = extractProductUrls(text);
+      const prices = extractPrices(text);
+      const displayText = cleanBotResponse(text);
+      
+      wrap.innerHTML = formatBotHtml(displayText);
+      body.appendChild(wrap);
+      
+      if (productUrls.length > 0) {
+        renderProductTiles(productUrls, prices);
+      }
+    } else {
+      wrap.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
+      body.appendChild(wrap);
+    }
 
     if (attachments && attachments.length) {
       attachments.forEach(att => {
@@ -159,13 +187,98 @@
           img.alt = att.name || 'Attachment';
           img.addEventListener('click', () => window.open(att.url, '_blank'));
           attWrap.appendChild(img);
-          wrap.appendChild(attWrap);
+          wrap.appendChild(attWrap); // Append attachment to bubble
         }
       });
     }
 
-    body.appendChild(wrap);
     if (doScroll) scrollToBottom();
+  }
+
+  // ===== Smart Extractors =====
+  function extractProductUrls(text) {
+    const urls = [];
+    const urlRegex = /https?:\/\/[^\s]+(?:\/[^\s]+)?/gi;
+    let m;
+    while ((m = urlRegex.exec(text)) !== null) {
+      const fullUrl = m[0];
+      // Create a display name from the last part of the URL
+      const parts = fullUrl.split('/');
+      let slug = parts[parts.length - 1] || parts[parts.length - 2] || 'Sneaker';
+      slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
+      urls.push({ fullUrl, slug });
+    }
+    const seen = new Set();
+    return urls.filter(u => { if (seen.has(u.slug)) return false; seen.add(u.slug); return true; }).slice(0, 3); // Max 3 cards
+  }
+
+  function extractPrices(text) {
+    const prices = [];
+    const priceRegex = /\$(\d+(?:\.\d{2})?)/g;
+    let m;
+    while ((m = priceRegex.exec(text)) !== null) {
+      prices.push(m[1]);
+    }
+    return prices;
+  }
+
+  function cleanBotResponse(text) {
+    let clean = text.replace(/\*+/g, '');
+    clean = clean.replace(/https?:\/\/[^\s]+/gi, ''); // remove URLs
+    clean = clean.replace(/\[API RESPONSE[^\]]*\]/gi, '');
+    clean = clean.replace(/\(\s*\)/g, '');
+    clean = clean.replace(/\n{3,}/g, '\n\n');
+    return clean.trim();
+  }
+
+  function formatBotHtml(text) {
+    let html = escapeHtml(text).replace(/\n/g, '<br>');
+    return html;
+  }
+
+  // ===== Interactive Product Tiles =====
+  function renderProductTiles(productUrls, prices) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('product-tiles-wrapper', 'msg-animate-in');
+
+    productUrls.forEach((product, index) => {
+      const tile = document.createElement('a');
+      tile.href = product.fullUrl;
+      tile.target = '_blank';
+      tile.rel = 'noopener';
+      tile.classList.add('product-tile');
+      tile.style.animationDelay = `${index * 0.15}s`;
+
+      const prettyName = product.slug.length > 3 ? 
+        product.slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 
+        'Premium Sneaker';
+
+      const price = prices[index] || '120.00';
+      const imgSrc = getNextShoeImage();
+
+      tile.innerHTML = `
+        <div class="ptile-img-wrap">
+          <img src="${imgSrc}" alt="${escapeHtml(prettyName)}" class="ptile-img" />
+          <div class="ptile-overlay">
+            <span class="ptile-view-btn">View Sneaker</span>
+          </div>
+          <div class="ptile-tag">HOT 🔥</div>
+        </div>
+        <div class="ptile-info">
+          <div class="ptile-name">${escapeHtml(prettyName)}</div>
+          <div class="ptile-price">$${price}</div>
+        </div>
+        <div class="ptile-link-row">
+          <span class="ptile-shop-link">Shop Now</span>
+          <span class="ptile-arrow">→</span>
+        </div>
+      `;
+
+      wrapper.appendChild(tile);
+    });
+
+    body.appendChild(wrapper);
+    scrollToBottom();
   }
 
   function escapeHtml(str) {
