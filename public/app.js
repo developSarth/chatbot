@@ -195,24 +195,61 @@
     if (doScroll) scrollToBottom();
   }
 
-  // ===== Smart Extractors =====
+  // ===== Smart Extractors (Ultra-Robust) =====
   function extractProductUrls(text) {
+    if (!text || typeof text !== 'string') return [];
     const urls = [];
-    const urlRegex = /https?:\/\/[^\s]+(?:\/[^\s]+)?/gi;
+    
+    // 1. Match Markdown links: [Product Name](https://...)
+    const mdRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+|www\.[^\s\)]+)\)/gi;
     let m;
-    while ((m = urlRegex.exec(text)) !== null) {
-      const fullUrl = m[0];
-      // Create a display name from the last part of the URL
-      const parts = fullUrl.split('/');
-      let slug = parts[parts.length - 1] || parts[parts.length - 2] || 'Sneaker';
-      slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
-      urls.push({ fullUrl, slug });
+    while ((m = mdRegex.exec(text)) !== null) {
+      let url = m[2];
+      if (url.startsWith('www.')) url = 'https://' + url;
+      urls.push({ fullUrl: url, slug: m[1] });
     }
-    const seen = new Set();
-    return urls.filter(u => { if (seen.has(u.slug)) return false; seen.add(u.slug); return true; }).slice(0, 3); // Max 3 cards
+    
+    // 2. Match HTML href links: href="https://..."
+    const hrefRegex = /href=["'](https?:\/\/[^\s"']+|www\.[^\s"']+)["']/gi;
+    while ((m = hrefRegex.exec(text)) !== null) {
+      let url = m[1];
+      if (url.startsWith('www.')) url = 'https://' + url;
+      if (!urls.some(u => u.fullUrl.toLowerCase() === url.toLowerCase())) {
+        urls.push({ fullUrl: url, slug: 'Product' });
+      }
+    }
+    
+    // 3. Match raw URLs (anything starting with http://, https://, or www.)
+    const rawRegex = /(https?:\/\/[^\s<)"']+|www\.[^\s<)"']+)/gi;
+    while ((m = rawRegex.exec(text)) !== null) {
+      let url = m[1];
+      url = url.replace(/[.,;:\)\]]$/, ''); // Strip trailing punctuation
+      if (url.startsWith('www.')) url = 'https://' + url;
+      
+      if (!urls.some(u => u.fullUrl.toLowerCase() === url.toLowerCase())) {
+        const parts = url.split('/').filter(Boolean);
+        let slug = parts[parts.length - 1] || 'Item';
+        slug = slug.replace(/[^a-zA-Z0-9-]/g, '');
+        urls.push({ fullUrl: url, slug });
+      }
+    }
+    
+    // Deduplicate and limit to 3
+    const seen = {};
+    const finalUrls = [];
+    for (let i = 0; i < urls.length; i++) {
+      const key = urls[i].fullUrl.toLowerCase();
+      if (!seen[key]) {
+        seen[key] = true;
+        finalUrls.push(urls[i]);
+        if (finalUrls.length >= 3) break;
+      }
+    }
+    return finalUrls;
   }
 
   function extractPrices(text) {
+    if (!text || typeof text !== 'string') return [];
     const prices = [];
     const priceRegex = /\$(\d+(?:\.\d{2})?)/g;
     let m;
@@ -223,8 +260,19 @@
   }
 
   function cleanBotResponse(text) {
-    let clean = text.replace(/\*+/g, '');
-    clean = clean.replace(/https?:\/\/[^\s]+/gi, ''); // remove URLs
+    if (!text || typeof text !== 'string') return '';
+    let clean = text.replace(/\*+/g, ''); // Remove markdown bold/italic asterisks
+    
+    // Replace markdown links [Text](url) with just the "Text"
+    clean = clean.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+|www\.[^\s\)]+)\)/gi, '$1');
+    
+    // Replace HTML links <a href="...">Text</a> with just "Text"
+    clean = clean.replace(/<a[^>]*>([^<]+)<\/a>/gi, '$1');
+    
+    // Remove standalone raw URLs
+    clean = clean.replace(/(https?:\/\/[^\s<)"']+|www\.[^\s<)"']+)/gi, '');
+    
+    // Clean up backend artifacts
     clean = clean.replace(/\[API RESPONSE[^\]]*\]/gi, '');
     clean = clean.replace(/\(\s*\)/g, '');
     clean = clean.replace(/\n{3,}/g, '\n\n');
@@ -232,8 +280,8 @@
   }
 
   function formatBotHtml(text) {
-    let html = escapeHtml(text).replace(/\n/g, '<br>');
-    return html;
+    if (!text) return '';
+    return escapeHtml(text).replace(/\n/g, '<br>');
   }
 
   // ===== Interactive Product Tiles =====
