@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
 // n8n webhook URL — set N8N_WEBHOOK_URL env var in Render dashboard
-const N8N_WEBHOOK_URL = 'https://ravibhai.app.n8n.cloud/webhook/chatbot';
+const N8N_WEBHOOK_URL = 'https://reeri.app.n8n.cloud/webhook/chatbot';
 
 // Middleware
 app.use(cors());
