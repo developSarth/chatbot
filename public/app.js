@@ -161,15 +161,22 @@
     wrap.className = role === 'bot' ? 'msg-admin msg-animate-in' : 'msg-user msg-animate-in';
 
     if (text && role === 'bot') {
+      console.log('[Chatbot] Raw bot response:', text);
+
       const productUrls = extractProductUrls(text);
       const prices = extractPrices(text);
+      const productNames = extractProductNames(text);
       const displayText = cleanBotResponse(text);
       
       wrap.innerHTML = formatBotHtml(displayText);
       body.appendChild(wrap);
       
+      console.log('[Chatbot] URLs:', productUrls.length, '| Names:', productNames.length, '| Prices:', prices.length);
+
       if (productUrls.length > 0) {
         renderProductTiles(productUrls, prices);
+      } else if (productNames.length > 0) {
+        renderProductTilesFromNames(productNames, prices);
       }
     } else {
       wrap.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
@@ -187,7 +194,7 @@
           img.alt = att.name || 'Attachment';
           img.addEventListener('click', () => window.open(att.url, '_blank'));
           attWrap.appendChild(img);
-          wrap.appendChild(attWrap); // Append attachment to bubble
+          wrap.appendChild(attWrap);
         }
       });
     }
@@ -195,21 +202,62 @@
     if (doScroll) scrollToBottom();
   }
 
-  // ===== Smart Extractors (Ultra-Robust) =====
+  // ===== Product Name Extraction (Keyword-Based) =====
+  function extractProductNames(text) {
+    if (!text || typeof text !== 'string') return [];
+    const names = [];
+    let m;
+
+    // Pattern 1: Numbered list — "1. Nike Air Max 90 - $120"
+    const numberedRegex = /\d+[.\)]\s*(.+?)(?:\s*[-–—]\s*\$?\d|$|\n)/gm;
+    while ((m = numberedRegex.exec(text)) !== null) {
+      const name = m[1].replace(/\*+/g, '').trim();
+      if (name.length > 3 && name.length < 80) names.push(name);
+    }
+
+    // Pattern 2: Bold markdown — "**Nike Air Max 90**"
+    if (names.length === 0) {
+      const boldRegex = /\*\*([^*]{4,60})\*\*/g;
+      while ((m = boldRegex.exec(text)) !== null) {
+        const candidate = m[1].trim();
+        if (!isGenericPhrase(candidate)) names.push(candidate);
+      }
+    }
+
+    // Pattern 3: Dash list — "- Nike Air Max 90"
+    if (names.length === 0) {
+      const dashRegex = /^[-•]\s+(.{4,60})$/gm;
+      while ((m = dashRegex.exec(text)) !== null) {
+        const item = m[1].replace(/\*+/g, '').trim();
+        if (!isGenericPhrase(item)) names.push(item);
+      }
+    }
+
+    const seen = new Set();
+    return names.filter(n => { const k = n.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 3);
+  }
+
+  function isGenericPhrase(str) {
+    const lc = str.toLowerCase();
+    const generics = ['here are', 'check out', 'take a look', 'i recommend',
+      'let me know', 'feel free', 'happy to help', 'sure', 'of course',
+      'no problem', 'you can', 'please', 'thank', 'welcome'];
+    return generics.some(g => lc.includes(g));
+  }
+
+  // ===== URL Extraction =====
   function extractProductUrls(text) {
     if (!text || typeof text !== 'string') return [];
     const urls = [];
-    
-    // 1. Match Markdown links: [Product Name](https://...)
-    const mdRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+|www\.[^\s\)]+)\)/gi;
     let m;
+
+    const mdRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+|www\.[^\s\)]+)\)/gi;
     while ((m = mdRegex.exec(text)) !== null) {
       let url = m[2];
       if (url.startsWith('www.')) url = 'https://' + url;
       urls.push({ fullUrl: url, slug: m[1] });
     }
-    
-    // 2. Match HTML href links: href="https://..."
+
     const hrefRegex = /href=["'](https?:\/\/[^\s"']+|www\.[^\s"']+)["']/gi;
     while ((m = hrefRegex.exec(text)) !== null) {
       let url = m[1];
@@ -218,14 +266,11 @@
         urls.push({ fullUrl: url, slug: 'Product' });
       }
     }
-    
-    // 3. Match raw URLs (anything starting with http://, https://, or www.)
+
     const rawRegex = /(https?:\/\/[^\s<)"']+|www\.[^\s<)"']+)/gi;
     while ((m = rawRegex.exec(text)) !== null) {
-      let url = m[1];
-      url = url.replace(/[.,;:\)\]]$/, ''); // Strip trailing punctuation
+      let url = m[1].replace(/[.,;:\)\]]$/, '');
       if (url.startsWith('www.')) url = 'https://' + url;
-      
       if (!urls.some(u => u.fullUrl.toLowerCase() === url.toLowerCase())) {
         const parts = url.split('/').filter(Boolean);
         let slug = parts[parts.length - 1] || 'Item';
@@ -233,19 +278,9 @@
         urls.push({ fullUrl: url, slug });
       }
     }
-    
-    // Deduplicate and limit to 3
-    const seen = {};
-    const finalUrls = [];
-    for (let i = 0; i < urls.length; i++) {
-      const key = urls[i].fullUrl.toLowerCase();
-      if (!seen[key]) {
-        seen[key] = true;
-        finalUrls.push(urls[i]);
-        if (finalUrls.length >= 3) break;
-      }
-    }
-    return finalUrls;
+
+    const seen = new Set();
+    return urls.filter(u => { const k = u.fullUrl.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 3);
   }
 
   function extractPrices(text) {
@@ -253,26 +288,16 @@
     const prices = [];
     const priceRegex = /\$(\d+(?:\.\d{2})?)/g;
     let m;
-    while ((m = priceRegex.exec(text)) !== null) {
-      prices.push(m[1]);
-    }
+    while ((m = priceRegex.exec(text)) !== null) prices.push(m[1]);
     return prices;
   }
 
   function cleanBotResponse(text) {
     if (!text || typeof text !== 'string') return '';
-    let clean = text.replace(/\*+/g, ''); // Remove markdown bold/italic asterisks
-    
-    // Replace markdown links [Text](url) with just the "Text"
+    let clean = text.replace(/\*+/g, '');
     clean = clean.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+|www\.[^\s\)]+)\)/gi, '$1');
-    
-    // Replace HTML links <a href="...">Text</a> with just "Text"
     clean = clean.replace(/<a[^>]*>([^<]+)<\/a>/gi, '$1');
-    
-    // Remove standalone raw URLs
     clean = clean.replace(/(https?:\/\/[^\s<)"']+|www\.[^\s<)"']+)/gi, '');
-    
-    // Clean up backend artifacts
     clean = clean.replace(/\[API RESPONSE[^\]]*\]/gi, '');
     clean = clean.replace(/\(\s*\)/g, '');
     clean = clean.replace(/\n{3,}/g, '\n\n');
@@ -284,49 +309,78 @@
     return escapeHtml(text).replace(/\n/g, '<br>');
   }
 
-  // ===== Interactive Product Tiles =====
+  // ===== Render Product Tiles (from URLs) =====
   function renderProductTiles(productUrls, prices) {
     const wrapper = document.createElement('div');
     wrapper.classList.add('product-tiles-wrapper', 'msg-animate-in');
 
     productUrls.forEach((product, index) => {
+      const prettyName = product.slug.length > 3 ? 
+        product.slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 
+        'Premium Sneaker';
+      const price = prices[index] || '';
+      const imgSrc = getNextShoeImage();
+
       const tile = document.createElement('a');
       tile.href = product.fullUrl;
       tile.target = '_blank';
       tile.rel = 'noopener';
       tile.classList.add('product-tile');
       tile.style.animationDelay = `${index * 0.15}s`;
-
-      const prettyName = product.slug.length > 3 ? 
-        product.slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 
-        'Premium Sneaker';
-
-      const price = prices[index] || '120.00';
-      const imgSrc = getNextShoeImage();
-
-      tile.innerHTML = `
-        <div class="ptile-img-wrap">
-          <img src="${imgSrc}" alt="${escapeHtml(prettyName)}" class="ptile-img" />
-          <div class="ptile-overlay">
-            <span class="ptile-view-btn">View Sneaker</span>
-          </div>
-          <div class="ptile-tag">HOT 🔥</div>
-        </div>
-        <div class="ptile-info">
-          <div class="ptile-name">${escapeHtml(prettyName)}</div>
-          <div class="ptile-price">$${price}</div>
-        </div>
-        <div class="ptile-link-row">
-          <span class="ptile-shop-link">Shop Now</span>
-          <span class="ptile-arrow">→</span>
-        </div>
-      `;
-
+      tile.innerHTML = buildTileHTML(prettyName, price, imgSrc);
       wrapper.appendChild(tile);
     });
 
     body.appendChild(wrapper);
     scrollToBottom();
+  }
+
+  // ===== Render Product Tiles (from keyword names — no URLs) =====
+  function renderProductTilesFromNames(productNames, prices) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('product-tiles-wrapper', 'msg-animate-in');
+
+    productNames.forEach((name, index) => {
+      const price = prices[index] || '';
+      const imgSrc = getNextShoeImage();
+      const searchUrl = 'https://www.google.com/search?q=' + encodeURIComponent(name + ' buy');
+
+      const tile = document.createElement('a');
+      tile.href = searchUrl;
+      tile.target = '_blank';
+      tile.rel = 'noopener';
+      tile.classList.add('product-tile');
+      tile.style.animationDelay = `${index * 0.15}s`;
+      tile.innerHTML = buildTileHTML(name, price, imgSrc);
+      wrapper.appendChild(tile);
+    });
+
+    body.appendChild(wrapper);
+    scrollToBottom();
+  }
+
+  // ===== Shared Tile HTML =====
+  function buildTileHTML(name, price, imgSrc) {
+    const safeName = escapeHtml(name);
+    const priceHtml = price ? `<div class="ptile-price">$${price}</div>` : '';
+    const tagHtml = price ? '<div class="ptile-tag">HOT 🔥</div>' : '<div class="ptile-tag">NEW ✨</div>';
+    return `
+      <div class="ptile-img-wrap">
+        <img src="${imgSrc}" alt="${safeName}" class="ptile-img" onerror="this.style.display='none'" />
+        <div class="ptile-overlay">
+          <span class="ptile-view-btn">View Sneaker</span>
+        </div>
+        ${tagHtml}
+      </div>
+      <div class="ptile-info">
+        <div class="ptile-name">${safeName}</div>
+        ${priceHtml}
+      </div>
+      <div class="ptile-link-row">
+        <span class="ptile-shop-link">Shop Now</span>
+        <span class="ptile-arrow">→</span>
+      </div>
+    `;
   }
 
   function escapeHtml(str) {
